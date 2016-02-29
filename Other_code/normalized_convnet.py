@@ -1,3 +1,4 @@
+# This is Kyle Kastner's code
 from load_data import load_color
 import numpy as np
 import theano
