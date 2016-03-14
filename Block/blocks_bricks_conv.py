@@ -18,7 +18,8 @@ class ConvolutionalActivation(Sequence, Initializable):
     --------
     :class:`Convolutional` for the other parameters.
     """
-
+    
+    @lazy(allocation=['filter_size', 'num_filters', 'num_channels'])
     def __init__(self, activation, filter_size, num_filters, num_channels,
                  batch_size=None, image_size=None, step=(1, 1),
                  border_mode='valid', **kwargs):
@@ -65,6 +66,7 @@ class ConvolutionalLayer(Sequence, Initializable):
     Uses max pooling.
     """
 
+    @lazy(allocation=['filter_size', 'num_filters', 'num_channels'])
     def __init__(self, activation, filter_size, num_filters, pooling_size,
                  num_channels, conv_step=(1, 1), pooling_step=None,
                  batch_size=None, image_size=None, border_mode='valid',
