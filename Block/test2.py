@@ -4,7 +4,7 @@ from fuel.datasets.dogs_vs_cats import DogsVsCats
 from fuel.streams import DataStream
 from fuel.schemes import ShuffledScheme
 from fuel.transformers.image import RandomFixedSizeCrop
-from fuel.transformers import Flatten
+from fuel.transformers import Flatten, Cast
 from fuel.transformers.image import MinimumImageDimensions
 
 import theano
@@ -42,6 +42,8 @@ cropped_stream = RandomFixedSizeCrop(
 # from (channel, width, height) to simply (features,)
 flattened_stream = Flatten(
     cropped_stream, which_sources=('image_features',))
+
+stream_data = Cast(cropped_stream, dtype = 'float32', which_sources=('image_features',))
 
 # Create the Theano MLP
 import theano
@@ -91,26 +93,31 @@ import blocks_bricks_conv as b
 
 # Convolutional layers
 
-filter_sizes = [(5, 5)] * 3 + [(4, 4)] * 3
-num_filters = [32, 32, 64, 64, 128, 256]
-pooling_sizes = [(2, 2)] * 6
+
+filter_sizes = [(5, 5)] * 2
+num_filters = [128, 256]
+pooling_sizes = [(2, 2)] * 2
 activation = Logistic().apply
 conv_layers = [
-    b.ConvolutionalLayer(activation, filter_size, num_filters_, pooling_size, num_channels=3,)
+    b.ConvolutionalLayer(activation, filter_size, num_filters_, pooling_size, num_channels=3)
     for filter_size, num_filters_, pooling_size
     in zip(filter_sizes, num_filters, pooling_sizes)
 ]
+
 convnet = ConvolutionalSequence(conv_layers, num_channels=3,
-                                image_size=(260, 260),
+                                image_size=(32, 32),
                                 weights_init=Uniform(0, 0.2),
                                 biases_init=Constant(0.))
+
+
 convnet.initialize()
 conv_features = Flattener().apply(convnet.apply(X))
+
 
 # MLP
 
 mlp = MLP(activations=[Logistic(name='sigmoid_0'),
-          Softmax(name='softmax_1')], dims=[256, 256, 2],
+          Softmax(name='softmax_1')], dims=[ 256, 256, 256, 2],
           weights_init=IsotropicGaussian(0.01), biases_init=Constant(0))
 [child.name for child in mlp.children]
 ['linear_0', 'sigmoid_0', 'linear_1', 'softmax_1']
@@ -127,9 +134,9 @@ from blocks.graph import ComputationGraph
 from blocks.filter import VariableFilter
 cg = ComputationGraph(cost)
 print(VariableFilter(roles=[WEIGHT])(cg.variables))
-W1, W2, W3, W4, W5, W6, W7, W8  = VariableFilter(roles=[WEIGHT])(cg.variables)
+W1, W2, W3  = VariableFilter(roles=[WEIGHT])(cg.variables)
 # cost with L2 regularization
-cost = cost + 0.005 * (W7 ** 2).sum() + 0.005 * (W8 ** 2).sum()
+cost = cost + 0.005 * (W2 ** 2).sum() + 0.005 * (W3 ** 2).sum()
 cost.name = 'cost_with_regularization'
 
 #print(cg.variables)
@@ -149,6 +156,6 @@ algorithm = GradientDescent(cost=cost, parameters=cg.parameters,
 extensions = [TrainingDataMonitoring([cost], every_n_batches=1),
               Printing(every_n_batches=1)]
 
-main_loop = MainLoop(data_stream=flattened_stream, algorithm=algorithm,
+main_loop = MainLoop(data_stream=stream_data, algorithm=algorithm,
                      extensions=extensions)
 main_loop.run()
