@@ -1,4 +1,6 @@
-# Let's load and process the dataset
+# Trying out Blocks
+# Code is based of https://ift6266h16.wordpress.com/class-project/getting-started/
+
 from fuel.datasets.dogs_vs_cats import DogsVsCats
 from fuel.streams import DataStream
 from fuel.schemes import ShuffledScheme
@@ -41,28 +43,41 @@ cropped_stream = RandomFixedSizeCrop(
 flattened_stream = Flatten(
     cropped_stream, which_sources=('image_features',))
 
+# Create the Theano MLP
+import theano
+from theano import tensor
+import numpy
+
 X = tensor.matrix('image_features')
-print (X.shape)
 T = tensor.lmatrix('targets')
 
-W = theano.shared(np.random.uniform(low = -0.01, high = 0.01, size = (3072,500)),'W')
-b = theano.shared(np.zeros(500))
-V = theano.shared(np.random.uniform(low = -0.01, high = 0.01, size = (500,2)),'V')
-c = theano.shared(np.zeros(2))
-params = [W,b,V,c]
+W = theano.shared(
+    numpy.random.uniform(low=-0.01, high=0.01, size=(3072, 500)), 'W')
+b = theano.shared(numpy.zeros(500))
+V = theano.shared(
+    numpy.random.uniform(low=-0.01, high=0.01, size=(500, 2)), 'V')
+c = theano.shared(numpy.zeros(2))
+params = [W, b, V, c]
 
-H = tensor.nnet.sigmoid(tensor.dot(X,W) + b)
-Y = tensor.nnet.softmax(tensor.dot(H,V) + c)
+H = tensor.nnet.sigmoid(tensor.dot(X, W) + b)
+Y = tensor.nnet.softmax(tensor.dot(H, V) + c)
 
-loss = tensor.nnet.categorical_crossentropy(Y,T.flatten()).mean()
+loss = tensor.nnet.categorical_crossentropy(Y, T.flatten()).mean()
+
+# Use Blocks to train this network
+from blocks.algorithms import GradientDescent, Scale
+from blocks.extensions import Printing
+from blocks.extensions.monitoring import TrainingDataMonitoring
+from blocks.main_loop import MainLoop
 
 algorithm = GradientDescent(cost=loss, parameters=params,
-                            step_rule=Momentum(learning_rate=0.001, momentum=0.1))
+                            step_rule=Scale(learning_rate=0.1))
 
-#We want to monitor the cost as we train
+# We want to monitor the cost as we train
 loss.name = 'loss'
-extensions =    [TrainingDataMonitoring([loss],every_n_batches = 1),
-                Printing(every_n_batches = 1),FinishAfter(after_n_epochs=8)]
+extensions = [TrainingDataMonitoring([loss], every_n_batches=1),
+              Printing(every_n_batches=1)]
 
-main_loop = MainLoop(data_stream = flattened_stream, algorithm = algorithm, extensions = extensions)
+main_loop = MainLoop(data_stream=flattened_stream, algorithm=algorithm,
+                     extensions=extensions)
 main_loop.run()
