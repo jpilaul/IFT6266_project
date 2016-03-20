@@ -1,9 +1,7 @@
-
-
-"""convolutional network example.
-The original version of this code come from : https://github.com/mila-udem/blocks-examples/blob/master/mnist_lenet/
-This code have been developed with the help of  :
-Vincent Antaki (the code of the ScikitResize comes from him)
+"""
+Convolutional network example.
+The original version of this code come from LeNetConvNet.py
+https://github.com/mila-udem/blocks-examples/blob/master/mnist_lenet/
 """
 
 import logging
@@ -31,7 +29,43 @@ from fuel.streams import ServerDataStream
 import socket
 import datetime
 
+
 class LeNet(FeedforwardSequence, Initializable):
+    """LeNet-like convolutional network.
+
+    The class implements LeNet, which is a convolutional sequence with
+    an MLP on top (several fully-connected layers). For details see
+    [LeCun95]_.
+
+    .. [LeCun95] LeCun, Yann, et al.
+       *Comparison of learning algorithms for handwritten digit
+       recognition.*,
+       International conference on artificial neural networks. Vol. 60.
+
+    Parameters
+    ----------
+    conv_activations : list of :class:`.Brick`
+        Activations for convolutional network.
+    num_channels : int
+        Number of channels in the input image.
+    image_shape : tuple
+        Input image shape.
+    filter_sizes : list of tuples
+        Filter sizes of :class:`.blocks.conv.ConvolutionalLayer`.
+    feature_maps : list
+        Number of filters for each of convolutions.
+    pooling_sizes : list of tuples
+        Sizes of max pooling for each convolutional layer.
+    top_mlp_activations : list of :class:`.blocks.bricks.Activation`
+        List of activations for the top MLP.
+    top_mlp_dims : list
+        Numbers of hidden units and the output dimension of the top MLP.
+    conv_step : tuples
+        Step of convolution (similar for all layers).
+    border_mode : str
+        Border mode of convolution (similar for all layers).
+
+    """
 
     def __init__(self, conv_activations, num_channels, image_shape,
                  filter_sizes, feature_maps, pooling_sizes,
@@ -92,19 +126,24 @@ class LeNet(FeedforwardSequence, Initializable):
         self.top_mlp.dims = [numpy.prod(conv_out_dim)] + self.top_mlp_dims
 
 
-def main():
-    feature_maps = [20, 50]
-    mlp_hiddens = [50]
-    conv_sizes = [5,5]
-    pool_sizes = [3,3]
-    save_to="DvC.pkl"
-    batch_size=500
-    image_size = (32, 32)
+def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
+         conv_sizes=None, pool_sizes=None, batch_size=500,
+         num_batches=None):
+    if feature_maps is None:
+        feature_maps = [20, 50]
+    if mlp_hiddens is None:
+        mlp_hiddens = [500]
+    if conv_sizes is None:
+        conv_sizes = [5, 5]
+    if pool_sizes is None:
+        pool_sizes = [2, 2]
+    image_size = (32, 23)
+    batch_size = 50
     output_size = 2
     learningRate=0.1
     num_epochs=10
     num_batches=None
-    #host_plot = 'http://localhost:5006/'
+
 
     # Use ReLUs everywhere and softmax for the final prediction
     conv_activations = [Rectifier() for _ in feature_maps]
@@ -126,10 +165,12 @@ def main():
     convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.08)
     convnet.top_mlp.linear_transformations[1].weights_init = Uniform(width=.11)
     convnet.initialize()
-    logging.info("Input dim: {} {} {}".format(*convnet.children[0].get_dim('input_')))
+    logging.info("Input dim: {} {} {}".format(
+        *convnet.children[0].get_dim('input_')))
     for i, layer in enumerate(convnet.layers):
         if isinstance(layer, Activation):
-            logging.info("Layer {} ({})".format(i, layer.__class__.__name__))
+            logging.info("Layer {} ({})".format(
+                i, layer.__class__.__name__))
         else:
             logging.info("Layer {} ({}) dim: {} {} {}".format(
                 i, layer.__class__.__name__, *layer.get_dim('output')))
@@ -145,7 +186,7 @@ def main():
 
     cg = ComputationGraph([cost, error_rate])
 
-    ########### GET THE DATA #####################
+    ########### Loading images #####################
 
     from fuel.datasets.dogs_vs_cats import DogsVsCats
     from fuel.streams import DataStream, ServerDataStream
@@ -183,18 +224,9 @@ def main():
     extensions.append(ProgressBar())
     extensions.append(Printing())
 
-    #Adding a live plot with the bokeh server
-    #type http://localhost:5006 in your browser to visualise the result (you need also to install bokeh 0.10.0 and not 0.11.0)
-
-    """
-    extensions.append(Plot('%s %s @ %s' % ('CNN ', datetime.datetime.now(), socket.gethostname()),
-			channels=[['valid_cost', 'valid_error_rate'],
-			 ['train_total_gradient_norm']], after_epoch=True, server_url=host_plot))
-    """
-
-
     model = Model(cost)
 
+    ########### Loading images #####################
     main_loop = MainLoop(
         algorithm,
         stream_data_train,
@@ -205,4 +237,26 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO)
+    parser = ArgumentParser("An example of training a convolutional network "
+                            "on the CatVsDog dataset.")
+    parser.add_argument("--num-epochs", type=int, default=2,
+                        help="Number of training epochs to do.")
+    parser.add_argument("save_to", default="mnist.pkl", nargs="?",
+                        help="Destination to save the state of the training "
+                             "process.")
+    parser.add_argument("--feature-maps", type=int, nargs='+',
+                        default=[20, 50], help="List of feature maps numbers.")
+    parser.add_argument("--mlp-hiddens", type=int, nargs='+', default=[500],
+                        help="List of numbers of hidden units for the MLP.")
+    parser.add_argument("--conv-sizes", type=int, nargs='+', default=[5, 5],
+                        help="Convolutional kernels sizes. The kernels are "
+                        "always square.")
+    parser.add_argument("--pool-sizes", type=int, nargs='+', default=[2, 2],
+                        help="Pooling sizes. The pooling windows are always "
+                             "square. Should be the same length as "
+                             "--conv-sizes.")
+    parser.add_argument("--batch-size", type=int, default=500,
+                        help="Batch size.")
+    args = parser.parse_args()
+    main(**vars(args))
