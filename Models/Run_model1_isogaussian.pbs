@@ -1,0 +1,11 @@
+#!/bin/bash
+#PBS -l walltime=40:00:00
+#PBS -l nodes=npgu-a4-04:ppn=1
+#PBS -r n
+#PBS -q @hades
+
+module load CUDA
+module list
+export FUEL_DATA_PATH=/home2/COMMON/
+cd $HOME/IFT6266_project
+THEANO_FLAGS="floatX=float32,device=gpu,nvcc.fastmath=True" $HOME/anaconda2/bin/python $HOME/IFT6266_project/Model1_isogaussian_init.py > output.out
