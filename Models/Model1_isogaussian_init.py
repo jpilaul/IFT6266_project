@@ -216,25 +216,13 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     from fuel.transformers.image import RandomFixedSizeCrop, MinimumImageDimensions, Random2DRotation
     from fuel.transformers import Flatten, Cast, ScaleAndShift
 
-    """
-    def create_data(data):
-        stream = DataStream(data, iteration_scheme=ShuffledScheme(data.num_examples, batch_size))
-        stream = MinimumImageDimensions(stream, image_size, which_sources=('image_features',))
-        stream = MaximumImageDimensions(stream, image_size, which_sources=('image_features',))
-        stream = RandomHorizontalSwap(stream, which_sources=('image_features',))
-        stream = Random2DRotation(stream, which_sources=('image_features',))
-        #stream = ScikitResize(stream, image_size, which_sources=('image_features',))
-        stream = ScaleAndShift(stream, 1./255, 0, which_sources=('image_features',))
-        stream = Cast(stream, dtype='float32', which_sources=('image_features',))
-        return stream
-    """"
 
-    stream_train = ServerDataStream(('image_features','targets'), False, port=5560)
-    stream_valid = ServerDataStream(('image_features','targets'), False, port=5561)
+    stream_data_train = ServerDataStream(('image_features','targets'), False, port=5560)
+    stream_data_valid = ServerDataStream(('image_features','targets'), False, port=5561)
     #stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 22500)))
-    #stream_data_test = create_data(DogsVsCats(('train',), subset=slice(22500, 25000)))
+    #stream_data_valid = create_data(DogsVsCats(('train',), subset=slice(22500, 25000)))
     #stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 10)))
-    #stream_data_test = create_data(DogsVsCats(('train',), subset=slice(10, 12)))
+    #stream_data_valid = create_data(DogsVsCats(('train',), subset=slice(10, 12)))
 
     # Train with simple SGD
     algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Momentum(learning_rate=learningRate, momentum=0.7))
@@ -248,7 +236,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     extensions = []
     extensions.append(Timing())
     extensions.append(FinishAfter(after_n_epochs=num_epochs,after_n_batches=num_batches))
-    extensions.append(DataStreamMonitoring([cost, error_rate],stream_data_test,prefix="valid"))
+    extensions.append(DataStreamMonitoring([cost, error_rate],stream_data_valid,prefix="valid"))
     extensions.append(TrainingDataMonitoring([cost, error_rate,aggregation.mean(algorithm.total_gradient_norm)],prefix="train",after_epoch=True))
     extensions.append(Checkpoint("Model1_isogaussian_init.pkl", after_epoch=True, after_training=True, save_separately=['log']))
     extensions.append(ProgressBar())
