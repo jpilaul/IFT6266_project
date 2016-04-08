@@ -30,7 +30,6 @@ from toolz.itertoolz import interleave
 from fuel_transformers_image import MaximumImageDimensions, RandomHorizontalSwap
 from plot import Plot
 #from ScikitResize import ScikitResize
-from fuel.streams import ServerDataStream
 import socket
 import datetime
 
@@ -217,6 +216,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     from fuel.transformers.image import RandomFixedSizeCrop, MinimumImageDimensions, Random2DRotation
     from fuel.transformers import Flatten, Cast, ScaleAndShift
 
+    """
     def create_data(data):
         stream = DataStream(data, iteration_scheme=ShuffledScheme(data.num_examples, batch_size))
         stream = MinimumImageDimensions(stream, image_size, which_sources=('image_features',))
@@ -227,10 +227,12 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
         stream = ScaleAndShift(stream, 1./255, 0, which_sources=('image_features',))
         stream = Cast(stream, dtype='float32', which_sources=('image_features',))
         return stream
+    """"
 
-
-    stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 22500)))
-    stream_data_test = create_data(DogsVsCats(('train',), subset=slice(22500, 25000)))
+    stream_train = ServerDataStream(('image_features','targets'), False, port=5560)
+    stream_valid = ServerDataStream(('image_features','targets'), False, port=5561)
+    #stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 22500)))
+    #stream_data_test = create_data(DogsVsCats(('train',), subset=slice(22500, 25000)))
     #stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 10)))
     #stream_data_test = create_data(DogsVsCats(('train',), subset=slice(10, 12)))
 
@@ -239,9 +241,6 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Scale(learning_rate=learningRate))
     #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Adam(0.001))
 
-    #Little trick to plot the error rate in two different plots (We can't use two time the same data in the plot for a unknow reason)
-    error_rate = error.copy(name='error_rate')
-    error_rate2 = error.copy(name='error_rate2')
 
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
