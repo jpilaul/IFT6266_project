@@ -27,8 +27,9 @@ from blocks.main_loop import MainLoop
 from blocks.model import Model
 from blocks.monitoring import aggregation
 from toolz.itertoolz import interleave
-#from plot import Plot
-from ScikitResize import ScikitResize
+from fuel_transformers_image import MaximumImageDimensions, RandomHorizontalSwap
+from plot import Plot
+#from ScikitResize import ScikitResize
 from fuel.streams import ServerDataStream
 import socket
 import datetime
@@ -139,13 +140,13 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     if feature_maps is None:
         feature_maps = [32, 32, 64, 64, 128, 128]
     if mlp_hiddens is None:
-        mlp_hiddens = [20]
+        mlp_hiddens = [1000]
     if conv_sizes is None:
         conv_sizes = [7, 5, 5, 5, 3, 3]
     if pool_sizes is None:
         pool_sizes = [2, 2, 2, 2, 2, 2]
     image_size = (128, 128)
-    batch_size = 200
+    batch_size = 64
     output_size = 2
     learningRate = 0.01
     drop_prob = 0.4
@@ -192,6 +193,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
             .copy(name='cost'))
     error_rate = (MisclassificationRate().apply(y.flatten(), probs)
                   .copy(name='error_rate'))
+    error_rate2 = error_rate.copy(name='error_rate2')
 
     cg = ComputationGraph([cost, error_rate])
     weights = VariableFilter(roles=[FILTER, WEIGHT])(cg.variables)
@@ -199,7 +201,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     ############# Dropout #############
 
     logger.info('Applying dropout')
-    cg = apply_dropout(cg, weights[0:3], drop_prob)
+    cg = apply_dropout(cg, weights[-1:0], drop_prob) #Dropout only on MLP layer
     dropped_out = VariableFilter(roles=[DROPOUT])(cg.variables)
 
     ############# Guaussian Noise #############
@@ -217,14 +219,14 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
 
     def create_data(data):
         stream = DataStream(data, iteration_scheme=ShuffledScheme(data.num_examples, batch_size))
-        stream_downscale = MinimumImageDimensions(stream, image_size, which_sources=('image_features',))
-        stream_rotate = Random2DRotation(stream_downscale, which_sources=('image_features',))
-        stream_max = ScikitResize(stream_rotate, image_size, which_sources=('image_features',))
-        stream_scale = ScaleAndShift(stream_max, 1./255, 0, which_sources=('image_features',))
-        stream_cast = Cast(stream_scale, dtype='float32', which_sources=('image_features',))
-        #stream_flat = Flatten(stream_scale, which_sources=('image_features',))
-
-        return stream_cast
+        stream = MinimumImageDimensions(stream, image_size, which_sources=('image_features',))
+        stream = MaximumImageDimensions(stream, image_size, which_sources=('image_features',))
+        stream = RandomHorizontalSwap(stream, which_sources=('image_features',))
+        stream = Random2DRotation(stream, which_sources=('image_features',))
+        #stream = ScikitResize(stream, image_size, which_sources=('image_features',))
+        stream = ScaleAndShift(stream, 1./255, 0, which_sources=('image_features',))
+        stream = Cast(stream, dtype='float32', which_sources=('image_features',))
+        return stream
 
 
     stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 22500)))
@@ -237,6 +239,10 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Scale(learning_rate=learningRate))
     #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Adam(0.001))
 
+    #Little trick to plot the error rate in two different plots (We can't use two time the same data in the plot for a unknow reason)
+    error_rate = error.copy(name='error_rate')
+    error_rate2 = error.copy(name='error_rate2')
+
     # `Timing` extension reports time for reading data, aggregating a batch
     # and monitoring;
     # `ProgressBar` displays a nice progress bar during training.
@@ -248,6 +254,12 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     extensions.append(Checkpoint("Model1_isogaussian_init.pkl", after_epoch=True, after_training=True, save_separately=['log']))
     extensions.append(ProgressBar())
     extensions.append(Printing())
+
+    host_plot='http://hades.calculquebec.ca:5090'
+    extensions.append(Plot('5C 3*3C 2*2P 204080...F 004LR 09Mom %s %s @ %s' % ('CNN ', datetime.datetime.now(), socket.gethostname()),
+                        channels=[['train_error_rate', 'valid_error_rate'],
+                         ['train_total_gradient_norm']], after_epoch=True, server_url=host_plot))
+    logger.info("Building the model")
 
     model = Model(cost)
 
