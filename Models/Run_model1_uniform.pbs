@@ -1,0 +1,13 @@
+#!/bin/bash
+#PBS -l walltime=40:00:00
+#PBS -l nodes=ngpu-a4-02:ppn=1
+#PBS -r n
+#PBS -q @hades
+
+module load CUDA
+module list
+export FUEL_DATA_PATH=/home2/COMMON/
+cd $HOME/IFT6266_project
+$HOME/anaconda2/bin/python $HOME/IFT6266_project/data_servers.py --type "train"&
+$HOME/anaconda2/bin/python $HOME/IFT6266_project/data_servers.py --type "valid"&
+THEANO_FLAGS="floatX=float32,device=gpu,nvcc.fastmath=True" $HOME/anaconda2/bin/python $HOME/IFT6266_project/Model1_uniform_init.py > output.out
