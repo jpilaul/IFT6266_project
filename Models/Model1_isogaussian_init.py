@@ -88,20 +88,26 @@ class LeNet(FeedforwardSequence, Initializable):
 
         conv_parameters = zip(filter_sizes, feature_maps)
 
-        # Construct convolutional layers with corresponding parameters
+        # Construct convolutional, activation, and pooling layers with corresponding parameters
+        self.convolution_layer = (Convolutional(filter_size=filter_size,
+                                               num_filters=num_filter,
+                                               step=self.conv_step,
+                                               border_mode=self.border_mode,
+                                               name='conv_{}'.format(i))
+                                 for i, (filter_size, num_filter)
+                                 in enumerate(conv_parameters))
+
+        self.BN_layer =          (BatchNormalization(name='bn_conv_{}'.format(i))
+                                 for i in enumerate(conv_parameters))
+
+        self.pooling_layer =     (MaxPooling(size, name='pool_{}'.format(i))
+                                 for i, size in enumerate(pooling_sizes))
+
         self.layers = list(interleave([
-            (Convolutional(filter_size=filter_size,
-                           num_filters=num_filter,
-                           step=self.conv_step,
-                           border_mode=self.border_mode,
-                           name='conv_{}'.format(i))
-             for i, (filter_size, num_filter)
-             in enumerate(conv_parameters)),
-             (BatchNormalization(name='bn_conv_{}'.format(i))
-             for i in enumerate(conv_parameters)),
-             conv_activations,
-             (MaxPooling(size, name='pool_{}'.format(i))
-             for i, size in enumerate(pooling_sizes))]))
+                            self.convolution_layer,
+                            self.BN_layer,
+                            conv_activations,
+                            self.pooling_layer]))
 
         self.conv_sequence = ConvolutionalSequence(self.layers, num_channels,
                                                    image_size=image_shape)
@@ -188,10 +194,8 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
 
     # Normalize input and apply the convnet
     probs = convnet.apply(x)
-    cost = (CategoricalCrossEntropy().apply(y.flatten(), probs)
-            .copy(name='cost'))
-    error_rate = (MisclassificationRate().apply(y.flatten(), probs)
-                  .copy(name='error_rate'))
+    cost = (CategoricalCrossEntropy().apply(y.flatten(), probs).copy(name='cost'))
+    error_rate = (MisclassificationRate().apply(y.flatten(), probs).copy(name='error_rate'))
     error_rate2 = error_rate.copy(name='error_rate2')
 
     cg = ComputationGraph([cost, error_rate])
@@ -200,7 +204,7 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     ############# Dropout #############
 
     logger.info('Applying dropout')
-    cg = apply_dropout(cg, weights[-1:0], drop_prob) #Dropout only on MLP layer
+    cg = apply_dropout(cg, weights[-1:0], drop_prob) #Dropout only on fully-connected layer
     dropped_out = VariableFilter(roles=[DROPOUT])(cg.variables)
 
     ############# Guaussian Noise #############
@@ -216,16 +220,27 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     from fuel.transformers.image import RandomFixedSizeCrop, MinimumImageDimensions, Random2DRotation
     from fuel.transformers import Flatten, Cast, ScaleAndShift
 
+    def create_data(data):
+        stream = DataStream(data, iteration_scheme=ShuffledScheme(data.num_examples, batch_size))
+        stream = MinimumImageDimensions(stream, image_size, which_sources=('image_features',))
+        stream = MaximumImageDimensions(stream, image_size, which_sources=('image_features',))
+        stream = RandomHorizontalSwap(stream, which_sources=('image_features',))
+        stream = Random2DRotation(stream, which_sources=('image_features',))
+        #stream = ScikitResize(stream, image_size, which_sources=('image_features',))
+        stream = ScaleAndShift(stream, 1./255, 0, which_sources=('image_features',))
+        stream = Cast(stream, dtype='float32', which_sources=('image_features',))
+        return stream
 
-    stream_data_train = ServerDataStream(('image_features','targets'), False, port=5560)
-    stream_data_valid = ServerDataStream(('image_features','targets'), False, port=5561)
-    #stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 22500)))
-    #stream_data_valid = create_data(DogsVsCats(('train',), subset=slice(22500, 25000)))
+    #stream_data_train = ServerDataStream(('image_features','targets'), False, port=5560)
+    #stream_data_valid = ServerDataStream(('image_features','targets'), False, port=5561)
+    stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 22500)))
+    stream_data_valid = create_data(DogsVsCats(('train',), subset=slice(22500, 25000)))
     #stream_data_train = create_data(DogsVsCats(('train',), subset=slice(0, 10)))
     #stream_data_valid = create_data(DogsVsCats(('train',), subset=slice(10, 12)))
 
     # Train with simple SGD
-    algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Momentum(learning_rate=learningRate, momentum=0.7))
+    # On the importance of initialization and momentum in deep learning: choose lowest momentum w/ lowest error
+    algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Momentum(learning_rate=learningRate, momentum=0.995))
     #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Scale(learning_rate=learningRate))
     #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Adam(0.001))
 
@@ -242,8 +257,8 @@ def main(save_to, num_epochs, feature_maps=None, mlp_hiddens=None,
     extensions.append(ProgressBar())
     extensions.append(Printing())
 
-    host_plot='http://hades.calculquebec.ca:5090'
-    extensions.append(Plot('5C 3*3C 2*2P 204080...F 004LR 09Mom %s %s @ %s' % ('CNN ', datetime.datetime.now(), socket.gethostname()),
+    host_plot='http://hades:5090'
+    extensions.append(Plot('%s %s @ %s' % ('CNN1_isogaussian', datetime.datetime.now(), socket.gethostname()),
                         channels=[['train_error_rate', 'valid_error_rate'],
                          ['train_total_gradient_norm']], after_epoch=True, server_url=host_plot))
     logger.info("Building the model")
