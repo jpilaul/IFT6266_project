@@ -29,6 +29,7 @@ from blocks.monitoring import aggregation
 from toolz.itertoolz import interleave
 from fuel_transformers_image import MaximumImageDimensions, RandomHorizontalSwap
 from plot import Plot
+from RRELU_ELU import Rand_Leaky_Rectifier, ELU
 #from ScikitResize import ScikitResize
 import socket
 import datetime
