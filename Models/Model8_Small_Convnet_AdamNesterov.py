@@ -1,4 +1,5 @@
 """
+Applying Adam Nesterov Momentum
 Convolutional network example.
 The original version of this code come from LeNetConvNet.py
 https://github.com/mila-udem/blocks-examples/blob/master/mnist_lenet/
@@ -91,25 +92,19 @@ class LeNet(FeedforwardSequence, Initializable):
         conv_parameters = zip(filter_sizes, feature_maps)
 
         # Construct convolutional, activation, and pooling layers with corresponding parameters
-        self.convolution_layer = (Convolutional(filter_size=filter_size,
-                                               num_filters=num_filter,
-                                               step=self.conv_step,
-                                               border_mode=self.border_mode,
-                                               name='conv_{}'.format(i))
-                                 for i, (filter_size, num_filter)
-                                 in enumerate(conv_parameters))
-
-        self.BN_layer =          (BatchNormalization(name='bn_conv_{}'.format(i))
-                                 for i in enumerate(conv_parameters))
-
-        self.pooling_layer =     (MaxPooling(size, name='pool_{}'.format(i))
-                                 for i, size in enumerate(pooling_sizes))
-
         self.layers = list(interleave([
-                            self.convolution_layer,
-                            self.BN_layer,
-                            conv_activations,
-                            self.pooling_layer]))
+            (Convolutional(filter_size=filter_size,
+                           num_filters=num_filter,
+                           step=self.conv_step,
+                           border_mode=self.border_mode,
+                           name='conv_{}'.format(i))
+             for i, (filter_size, num_filter)
+             in enumerate(conv_parameters)),
+             (BatchNormalization(name='bn_conv_{}'.format(i))
+             for i in enumerate(conv_parameters)),
+             conv_activations,
+             (MaxPooling(size, name='pool_{}'.format(i))
+             for i, size in enumerate(pooling_sizes))]))
 
         self.conv_sequence = ConvolutionalSequence(self.layers, num_channels,
                                                    image_size=image_shape)
