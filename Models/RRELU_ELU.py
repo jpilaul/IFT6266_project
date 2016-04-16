@@ -34,9 +34,9 @@ class Rand_Leaky_Rectifier(Activation):
     rng : :class:`numpy.random.RandomState`
     """
     @application(inputs=['input_'], outputs=['output'])
-    def apply(self, input_):
+    def apply(self, input_, lower = 3, upper = 8):
         #    Suggested by the NDSB competition winner, 'a' is sampled from U(3, 8).
-        a = numpy.random.uniform(3, 8, size=None) # broadcastable
+        a = numpy.random.uniform(lower, upper, size=None) # broadcastable
         return tensor.switch(input_ > 0, input_, input_/a)
 
 # Code from Julien St-Pierre-Fortin
