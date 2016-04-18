@@ -1,5 +1,5 @@
 """
-Convolutional network example using ReLU
+Convolutional network example using RRELU and NesterovAdam and SpatialBatchNormalization
 The original version of this code come from LeNetConvNet.py
 https://github.com/mila-udem/blocks-examples/blob/master/mnist_lenet/
 """
@@ -7,7 +7,7 @@ https://github.com/mila-udem/blocks-examples/blob/master/mnist_lenet/
 import logging
 import numpy
 from argparse import ArgumentParser
-
+import theano
 from theano import tensor
 
 from blocks.algorithms import GradientDescent, Scale, Adam, Momentum
@@ -19,6 +19,7 @@ from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.extensions import FinishAfter, Timing, Printing, ProgressBar
 from blocks.extensions.monitoring import (DataStreamMonitoring,TrainingDataMonitoring)
 from blocks.extensions.saveload import Checkpoint
+from blocks.initialization import NdarrayInitialization
 from blocks.graph import (ComputationGraph, apply_batch_normalization,
 get_batch_normalization_updates, apply_dropout, apply_noise)
 from blocks.filter import get_brick, VariableFilter
@@ -41,31 +42,31 @@ def main(feature_maps=None, mlp_hiddens=None,
          conv_sizes=None, pool_sizes=None, batch_size=None,
          num_batches=None):
     if feature_maps is None:
-        feature_maps = [32, 48, 64, 96, 96, 128]
+        feature_maps = [32, 48, 64, 80, 128, 128]
     if mlp_hiddens is None:
         mlp_hiddens = [1000]
     if conv_sizes is None:
-        conv_sizes = [9, 7, 5, 3, 2, 1]
+        conv_sizes = [7, 5, 5, 5, 5, 4]
     if pool_sizes is None:
-        pool_sizes = [2, 2, 2, 2, 1, 1]
+        pool_sizes = [3, 2, 2, 2, 2, 1]
     if batch_size is None:
         batch_size = 64
     conv_steps=[2, 1, 1, 1, 1, 1] #same as stride
-    image_size = (128, 128)
+    image_size = (256, 256)
     output_size = 2
     learningRate = 0.001
-    drop_prob = 0.4
+    drop_prob = 0.5
     weight_noise = 0.75
-    num_epochs = 150
+    num_epochs = 250
     num_batches = None
     host_plot='http://hades:5090'
-    save_to = "ModelSimpleConvNet128_ELU.pkl"
-    graph_name = 'CNN_convnet_128_ELU'
-    mode = "GPU_run" # "CPU_test" or "GPU_run"
+    save_to = "ModelSimpleConvNet128_NesterovAdam.pkl"
+    graph_name = 'CNN_convnet_128_NesterovAdam'
+    mode = "CPU_test" # "CPU_test" or "GPU_run"
 
     # Use ReLUs everywhere and softmax for the final prediction
-    conv_activations = [ELU() for _ in feature_maps]
-    mlp_activations = [ELU() for _ in mlp_hiddens] + [Softmax()]
+    conv_activations = [Rand_Leaky_Rectifier() for _ in feature_maps]
+    mlp_activations = [Rand_Leaky_Rectifier() for _ in mlp_hiddens] + [Softmax()]
     convnet = LeNet(conv_activations, 3, image_size,
                     filter_sizes=zip(conv_sizes, conv_sizes),
                     feature_maps=feature_maps,
@@ -74,14 +75,14 @@ def main(feature_maps=None, mlp_hiddens=None,
                     top_mlp_activations=mlp_activations,
                     top_mlp_dims=mlp_hiddens + [output_size],
                     border_mode='full',
-                    weights_init=Uniform(width=.2),
+                    weights_init=Glorot(),
                     biases_init=Constant(0))
     # We push initialization config to set different initialization schemes
     # for convolutional layers.
     convnet.push_initialization_config()
-    convnet.layers[0].weights_init = Uniform(width=.2)
+    convnet.layers[0].weights_init = Glorot()
     convnet.layers[1].weights_init = Constant(0)
-    convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.2)
+    convnet.top_mlp.linear_transformations[0].weights_init = Glorot()
     convnet.top_mlp.linear_transformations[1].weights_init = Constant(0)
     convnet.initialize()
     logging.info("Input dim: {} {} {}".format(
@@ -106,11 +107,12 @@ def main(feature_maps=None, mlp_hiddens=None,
     weights = VariableFilter(roles=[FILTER, WEIGHT])(cg.variables)
 
     ############# Dropout #############
-    """
+
     logger.info('Applying dropout')
     cg = apply_dropout(cg, weights[-1:0], drop_prob) #Dropout only on fully-connected layer
     dropped_out = VariableFilter(roles=[DROPOUT])(cg.variables)
 
+    """
     ############# Guaussian Noise #############
 
     logger.info('Applying Gaussian noise')
@@ -158,7 +160,7 @@ def main(feature_maps=None, mlp_hiddens=None,
     # On the importance of initialization and momentum in deep learning: choose lowest momentum w/ lowest error
     algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=NesterovAdam(learning_rate=learningRate, momentum=0.995))
     #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Scale(learning_rate=learningRate))
-    #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Adam(0.001))
+    #algorithm = GradientDescent(cost=cost, parameters=cg.parameters,step_rule=Adam())
 
 
     # `Timing` extension reports time for reading data, aggregating a batch
@@ -196,6 +198,14 @@ def main(feature_maps=None, mlp_hiddens=None,
         extensions=extensions)
 
     main_loop.run()
+
+class Glorot(NdarrayInitialization):
+    def generate(self, rng, shape):
+        input_size = shape[1]
+        output_size = shape[0]
+        high = numpy.sqrt(6) / numpy.sqrt(input_size + output_size)
+        m = rng.uniform(-high, high, size=shape)
+        return m.astype(theano.config.floatX)
 
 
 class LeNet(FeedforwardSequence, Initializable):
@@ -261,8 +271,8 @@ class LeNet(FeedforwardSequence, Initializable):
              for i, size in enumerate(pooling_sizes))]))
 
         # Applying SpatialBatchNormalization to inputs
-        #self.layers = [SpatialBatchNormalization()] + conv_layers
-        self.layers = conv_layers
+        self.layers = [SpatialBatchNormalization()] + conv_layers
+        #self.layers = conv_layers
         self.conv_sequence = ConvolutionalSequence(self.layers, num_channels,
                                                    image_size=image_shape)
 
