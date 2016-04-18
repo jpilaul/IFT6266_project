@@ -1,5 +1,8 @@
 """
-Convolutional network example using ReLU and Nesterov and SpatialBatchNormalization
+Convolutional network example using adversial Networks
+Inspired from GoogleNet inception and based on the following paper
+Ian J. Goodfellow, Jonathon Shlens & Christian Szegedy, "Explaining and harnessing adversarial examples", March 2015, ICLR 2015
+ADVERSARIAL EXAMPLES
 The original version of this code come from LeNetConvNet.py
 https://github.com/mila-udem/blocks-examples/blob/master/mnist_lenet/
 """
